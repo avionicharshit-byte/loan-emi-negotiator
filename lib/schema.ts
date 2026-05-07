@@ -82,3 +82,48 @@ export const negotiationPlanSchema = z.object({
 });
 
 export type NegotiationPlan = z.infer<typeof negotiationPlanSchema>;
+
+export const rmReplyRequestSchema = z.object({
+  profile: loanProfileSchema,
+  originalTargetLow: z.number(),
+  originalTargetHigh: z.number(),
+  rmReplyText: z.string().min(10).max(4000),
+});
+
+export type RmReplyRequest = z.infer<typeof rmReplyRequestSchema>;
+
+export const counterPlanSchema = z.object({
+  rmStance: z
+    .enum(["accepted", "partial_offer", "rejected", "deflected", "asked_for_docs"])
+    .describe("How the RM responded — accepted target, made a partial counter-offer, outright rejected, deflected (e.g., 'we'll get back to you'), or asked for additional documents"),
+  rmRateOffered: z
+    .number()
+    .nullish()
+    .describe("If the RM quoted a specific rate in their reply, capture it here. null otherwise."),
+  rmFeesQuoted: z
+    .string()
+    .nullish()
+    .describe("If the RM mentioned a conversion fee or any charges, summarize here. null otherwise."),
+  recommendedAction: z.enum(["accept", "counter", "escalate", "walk_away"]),
+  reasoning: z
+    .string()
+    .describe("2–4 sentences on why this action — grounded in the gap between RM's offer and the borrower's target band"),
+  counterOffer: z
+    .object({
+      askRate: z.number().describe("The specific rate to counter-ask for, in percent"),
+      counterReply: z.string().describe("Draft reply email body, under 180 words, deferential, references the RM's specific points"),
+    })
+    .nullish()
+    .describe("Only present when recommendedAction is 'counter' or 'escalate'"),
+  escalationPath: z
+    .array(z.string())
+    .nullish()
+    .describe("Ordered escalation steps if recommendedAction is 'escalate'. Each item is a single concrete step."),
+  watchOuts: z
+    .array(z.string())
+    .min(1)
+    .max(4)
+    .describe("Things the borrower should be careful about based on this reply — e.g., processing-fee traps, lock-in clauses, conditional offers"),
+});
+
+export type CounterPlan = z.infer<typeof counterPlanSchema>;

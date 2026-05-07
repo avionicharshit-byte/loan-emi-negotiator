@@ -7,7 +7,7 @@ import { loanProfileSchema, negotiationPlanSchema } from "@/lib/schema";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY,

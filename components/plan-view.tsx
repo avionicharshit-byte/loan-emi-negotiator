@@ -3,12 +3,14 @@
 import { experimental_useObject as useObject } from "@ai-sdk/react";
 import { useEffect, useMemo, useState } from "react";
 
+import { CounterSection } from "@/components/counter-section";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { negotiationPlanSchema, type LoanProfile, type NegotiationPlan } from "@/lib/schema";
+import { buildShareUrl } from "@/lib/share";
 
 type PartialArgument = Partial<NegotiationPlan["arguments"][number]>;
 type PartialObjection = Partial<NegotiationPlan["phoneScript"]["objectionResponses"][number]>;
@@ -33,6 +35,7 @@ export function PlanView({ profile, onReset }: Props) {
   const [editedEmail, setEditedEmail] = useState<string | null>(null);
 
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
     submit(profile);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -52,25 +55,17 @@ export function PlanView({ profile, onReset }: Props) {
           <h1 className="text-2xl font-semibold tracking-tight">Your negotiation plan</h1>
           <p className="mt-1 text-sm text-muted-foreground">{profileSummary}</p>
         </div>
-        <Button variant="outline" onClick={onReset}>
-          ← Start over
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ShareButton profile={profile} />
+          <Button variant="outline" onClick={onReset}>
+            ← Start over
+          </Button>
+        </div>
       </header>
 
       {isLoading && <LoadingBanner profile={profile} />}
 
-      {error && (
-        <Card className="border-destructive">
-          <CardContent>
-            <p className="text-sm text-destructive">
-              The agent ran into an error: {error.message}. Check that your Gemini API key is set as
-              <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">GEMINI_API_KEY</code>
-              in <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">.env.local</code>
-              and try again.
-            </p>
-          </CardContent>
-        </Card>
-      )}
+      {error && <ErrorCard error={error} onRetry={() => submit(profile)} />}
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
@@ -278,8 +273,100 @@ export function PlanView({ profile, onReset }: Props) {
           ) : null}
         </CardContent>
       </Card>
+
+      {!isLoading &&
+        typeof object?.targetRate?.low === "number" &&
+        typeof object?.targetRate?.high === "number" && (
+          <CounterSection
+            profile={profile}
+            originalTargetLow={object.targetRate.low}
+            originalTargetHigh={object.targetRate.high}
+          />
+        )}
     </div>
   );
+}
+
+function ErrorCard({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const parsed = useMemo(() => parseAgentError(error), [error]);
+
+  return (
+    <Card className="border-destructive/50 bg-destructive/[0.04]">
+      <CardContent className="space-y-3 py-5">
+        <div className="flex items-start gap-3">
+          <span className="mt-1 inline-flex h-2 w-2 shrink-0 rounded-full bg-destructive" />
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <h2 className="font-semibold tracking-tight text-destructive">{parsed.title}</h2>
+            <p className="text-sm text-muted-foreground">{parsed.message}</p>
+            {parsed.hint && (
+              <p className="text-xs text-muted-foreground">{parsed.hint}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 pl-5">
+          <Button size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+          {parsed.docsUrl && (
+            <a
+              href={parsed.docsUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-primary underline underline-offset-2"
+            >
+              {parsed.docsLabel ?? "Learn more"}
+            </a>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function parseAgentError(error: Error): {
+  title: string;
+  message: string;
+  hint?: string;
+  docsUrl?: string;
+  docsLabel?: string;
+} {
+  const raw = error.message ?? "";
+
+  if (/RESOURCE_EXHAUSTED|quota|429/i.test(raw)) {
+    const retryMatch = raw.match(/retry in ([\d.]+)\s*s/i);
+    const retrySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+    return {
+      title: "Daily free quota reached",
+      message: retrySec
+        ? `You've hit Gemini's free-tier daily limit. Try again in ~${retrySec} seconds, or wait for the daily reset.`
+        : "You've hit Gemini's free-tier daily limit. Try again in a few seconds, or wait for the daily reset.",
+      hint:
+        "Tip: switch to gemini-2.5-flash-lite (default) for higher free-tier limits, or enable billing on your Google AI project for production usage.",
+      docsUrl: "https://ai.google.dev/gemini-api/docs/rate-limits",
+      docsLabel: "Gemini rate limits →",
+    };
+  }
+
+  if (/missing_api_key|GEMINI_API_KEY/i.test(raw)) {
+    return {
+      title: "API key missing",
+      message: "Set GEMINI_API_KEY in .env.local and restart the dev server.",
+      docsUrl: "https://aistudio.google.com/apikey",
+      docsLabel: "Get a Gemini key →",
+    };
+  }
+
+  if (/network|fetch|ECONNREFUSED|ENOTFOUND/i.test(raw)) {
+    return {
+      title: "Network error",
+      message: "Couldn't reach the agent service. Check your connection and try again.",
+    };
+  }
+
+  return {
+    title: "Something went wrong",
+    message: raw || "The agent failed unexpectedly. Please try again.",
+  };
 }
 
 function LoadingBanner({ profile }: { profile: LoanProfile }) {
@@ -395,6 +482,28 @@ function Skeleton({ lines = 2 }: { lines?: number }) {
         <div key={i} className="h-3 w-full animate-pulse rounded bg-muted" />
       ))}
     </div>
+  );
+}
+
+function ShareButton({ profile }: { profile: LoanProfile }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={async () => {
+        try {
+          const url = buildShareUrl(profile);
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1800);
+        } catch {
+          // ignore clipboard failures
+        }
+      }}
+    >
+      {copied ? "Link copied ✓" : "Share scenario"}
+    </Button>
   );
 }
 
