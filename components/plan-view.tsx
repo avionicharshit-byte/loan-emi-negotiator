@@ -57,6 +57,8 @@ export function PlanView({ profile, onReset }: Props) {
         </Button>
       </header>
 
+      {isLoading && <LoadingBanner profile={profile} />}
+
       {error && (
         <Card className="border-destructive">
           <CardContent>
@@ -90,9 +92,13 @@ export function PlanView({ profile, onReset }: Props) {
             <p className="text-xs text-muted-foreground">
               You&apos;re currently at {profile.currentRate}%
             </p>
-            <p className="pt-2 text-sm text-foreground">
-              {object?.targetRate?.reasoning ?? <Skeleton lines={3} />}
-            </p>
+            {object?.targetRate?.reasoning ? (
+              <p className="pt-2 text-sm text-foreground">{object.targetRate.reasoning}</p>
+            ) : (
+              <div className="pt-2">
+                <Skeleton lines={3} />
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -117,9 +123,13 @@ export function PlanView({ profile, onReset }: Props) {
                 <div className="text-xs text-muted-foreground">interest saved</div>
               </div>
             </div>
-            <p className="pt-2 text-xs text-muted-foreground">
-              {object?.savingsEstimate?.method ?? <Skeleton lines={1} />}
-            </p>
+            {object?.savingsEstimate?.method ? (
+              <p className="pt-2 text-xs text-muted-foreground">{object.savingsEstimate.method}</p>
+            ) : (
+              <div className="pt-2">
+                <Skeleton lines={1} />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -152,7 +162,13 @@ export function PlanView({ profile, onReset }: Props) {
               </div>
             ) : null,
           )}
-          {!object?.arguments?.length && <Skeleton lines={4} />}
+          {!object?.arguments?.length && (
+            <div className="grid gap-3">
+              <ArgumentSkeleton />
+              <ArgumentSkeleton />
+              <ArgumentSkeleton />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -171,9 +187,11 @@ export function PlanView({ profile, onReset }: Props) {
         <CardContent className="space-y-3">
           <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
             <span className="text-muted-foreground">Subject: </span>
-            <span className="font-medium">
-              {object?.emailDraft?.subject ?? <Skeleton lines={1} />}
-            </span>
+            {object?.emailDraft?.subject ? (
+              <span className="font-medium">{object.emailDraft.subject}</span>
+            ) : (
+              <span className="inline-block h-3 w-64 max-w-full animate-pulse rounded bg-muted align-middle" />
+            )}
           </div>
           <Textarea
             value={emailBody}
@@ -260,13 +278,83 @@ export function PlanView({ profile, onReset }: Props) {
           ) : null}
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      {isLoading && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-          Streaming plan…
+function LoadingBanner({ profile }: { profile: LoanProfile }) {
+  const steps = useMemo(
+    () => [
+      `Reading your ${profile.lender} ${profile.loanType}-loan profile…`,
+      `Mapping CIBIL ${profile.cibilScore} to ${profile.lender}'s rate-card tier…`,
+      `Checking the published EBLR floor + RBI repo rate transmission…`,
+      `Building your ranked negotiation arguments…`,
+      `Drafting the email to your branch RM…`,
+      `Composing the phone script with objection handling…`,
+      `Finalizing assumptions and confidence flags…`,
+    ],
+    [profile],
+  );
+
+  const [stepIdx, setStepIdx] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const stepInterval = setInterval(() => {
+      setStepIdx((i) => (i + 1) % steps.length);
+    }, 2200);
+    const tickInterval = setInterval(() => setElapsed((t) => t + 1), 1000);
+    return () => {
+      clearInterval(stepInterval);
+      clearInterval(tickInterval);
+    };
+  }, [steps.length]);
+
+  // Cosmetic progress bar that asymptotes toward 92% over ~18s; never reaches 100% until streaming completes
+  const progressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-elapsed / 6))));
+
+  return (
+    <Card className="border-primary/30 bg-primary/[0.03]">
+      <CardContent className="space-y-4 py-5">
+        <div className="flex items-start gap-3">
+          <span className="relative mt-1 inline-flex h-2.5 w-2.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 className="font-semibold tracking-tight">Generating your negotiation plan</h2>
+              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                {elapsed}s · usually 10–15s
+              </span>
+            </div>
+            <p className="mt-1.5 text-sm text-muted-foreground transition-opacity">
+              <span className="text-foreground/90">{steps[stepIdx]}</span>
+            </p>
+          </div>
         </div>
-      )}
+
+        <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
+          <div
+            className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
+            style={{ width: `${progressPct}%` }}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ArgumentSkeleton() {
+  return (
+    <div className="grid gap-2 rounded-lg border border-border/60 p-4">
+      <div className="flex items-center gap-2">
+        <span className="h-3 w-6 animate-pulse rounded bg-muted" />
+        <span className="h-4 w-12 animate-pulse rounded bg-muted" />
+        <span className="h-3 w-40 animate-pulse rounded bg-muted" />
+      </div>
+      <span className="h-3 w-full animate-pulse rounded bg-muted" />
+      <span className="h-3 w-5/6 animate-pulse rounded bg-muted" />
     </div>
   );
 }
