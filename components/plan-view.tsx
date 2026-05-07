@@ -34,6 +34,16 @@ export function PlanView({ profile, onReset }: Props) {
 
   const [editedEmail, setEditedEmail] = useState<string | null>(null);
 
+  // overlayVisible stays true while loading AND for 500 ms after to let the
+  // fade-out animation finish before the overlay unmounts.
+  const [overlayVisible, setOverlayVisible] = useState(true);
+  useEffect(() => {
+    if (!isLoading) {
+      const t = setTimeout(() => setOverlayVisible(false), 500);
+      return () => clearTimeout(t);
+    }
+  }, [isLoading]);
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
     submit(profile);
@@ -50,6 +60,13 @@ export function PlanView({ profile, onReset }: Props) {
 
   return (
     <div className="grid gap-6">
+      {/* Full-screen loading overlay — covers the plan while data streams in.
+          Fades out once loading is done and then unmounts, revealing the
+          fully-populated plan with zero flicker. */}
+      {overlayVisible && (
+        <LoadingOverlay profile={profile} fading={!isLoading} />
+      )}
+
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Your negotiation plan</h1>
@@ -63,12 +80,10 @@ export function PlanView({ profile, onReset }: Props) {
         </div>
       </header>
 
-      {isLoading && <LoadingBanner profile={profile} />}
-
       {error && <ErrorCard error={error} onRetry={() => submit(profile)} />}
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card>
+        <Card className="min-h-[180px]">
           <CardHeader>
             <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
               Target rate
@@ -87,17 +102,17 @@ export function PlanView({ profile, onReset }: Props) {
             <p className="text-xs text-muted-foreground">
               You&apos;re currently at {profile.currentRate}%
             </p>
-            {object?.targetRate?.reasoning ? (
-              <p className="pt-2 text-sm text-foreground">{object.targetRate.reasoning}</p>
-            ) : (
-              <div className="pt-2">
+            <div className="pt-2 min-h-[60px]">
+              {object?.targetRate?.reasoning ? (
+                <p className="text-sm text-foreground">{object.targetRate.reasoning}</p>
+              ) : (
                 <Skeleton lines={3} />
-              </div>
-            )}
+              )}
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-h-[180px]">
           <CardHeader>
             <CardTitle className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
               If you succeed
@@ -118,13 +133,13 @@ export function PlanView({ profile, onReset }: Props) {
                 <div className="text-xs text-muted-foreground">interest saved</div>
               </div>
             </div>
-            {object?.savingsEstimate?.method ? (
-              <p className="pt-2 text-xs text-muted-foreground">{object.savingsEstimate.method}</p>
-            ) : (
-              <div className="pt-2">
+            <div className="pt-2 min-h-[24px]">
+              {object?.savingsEstimate?.method ? (
+                <p className="text-xs text-muted-foreground">{object.savingsEstimate.method}</p>
+              ) : (
                 <Skeleton lines={1} />
-              </div>
-            )}
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -135,6 +150,15 @@ export function PlanView({ profile, onReset }: Props) {
           <p className="text-sm text-muted-foreground">Ranked by leverage. Each cites a source.</p>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Show skeletons while loading and no args yet */}
+          {isLoading && !object?.arguments?.length && (
+            <div className="grid gap-3">
+              <ArgumentSkeleton />
+              <ArgumentSkeleton />
+              <ArgumentSkeleton />
+            </div>
+          )}
+          {/* Show real args as they arrive */}
           {(object?.arguments ?? []).map((arg: PartialArgument | undefined, idx: number) =>
             arg ? (
               <div key={idx} className="grid gap-2 rounded-lg border p-4">
@@ -157,7 +181,8 @@ export function PlanView({ profile, onReset }: Props) {
               </div>
             ) : null,
           )}
-          {!object?.arguments?.length && (
+          {/* After loading done, if still no args, show empty skeletons */}
+          {!isLoading && !object?.arguments?.length && (
             <div className="grid gap-3">
               <ArgumentSkeleton />
               <ArgumentSkeleton />
@@ -176,7 +201,13 @@ export function PlanView({ profile, onReset }: Props) {
                 To: {object?.emailDraft?.recipient ?? "your branch RM"} · Edit before sending.
               </p>
             </div>
-            <CopyButton text={`Subject: ${object?.emailDraft?.subject ?? ""}\n\n${emailBody}`} />
+            <div className="flex items-center gap-2">
+              <GmailButton
+                subject={object?.emailDraft?.subject ?? ""}
+                body={emailBody}
+              />
+              <CopyButton text={`Subject: ${object?.emailDraft?.subject ?? ""}\n\n${emailBody}`} />
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -210,7 +241,7 @@ export function PlanView({ profile, onReset }: Props) {
             <CopyButton text={formatPhoneScript(object?.phoneScript)} />
           </div>
         </CardHeader>
-        <CardContent className="space-y-4 text-sm">
+        <CardContent className="space-y-4 text-sm min-h-[180px]">
           {object?.phoneScript ? (
             <>
               <ScriptBlock label="Opening" body={object.phoneScript.opening} />
@@ -249,7 +280,7 @@ export function PlanView({ profile, onReset }: Props) {
             {object?.confidence && <ConfidenceBadge level={object.confidence} />}
           </div>
         </CardHeader>
-        <CardContent className="space-y-3 text-sm">
+        <CardContent className="space-y-3 text-sm min-h-[80px]">
           {object?.confidenceReason && (
             <p className="text-muted-foreground">{object.confidenceReason}</p>
           )}
@@ -369,7 +400,9 @@ function parseAgentError(error: Error): {
   };
 }
 
-function LoadingBanner({ profile }: { profile: LoanProfile }) {
+// ─── Loading overlay (full-screen) ──────────────────────────────────────────
+
+function LoadingOverlay({ profile, fading }: { profile: LoanProfile; fading: boolean }) {
   const steps = useMemo(
     () => [
       `Reading your ${profile.lender} ${profile.loanType}-loan profile…`,
@@ -397,38 +430,130 @@ function LoadingBanner({ profile }: { profile: LoanProfile }) {
     };
   }, [steps.length]);
 
-  // Cosmetic progress bar that asymptotes toward 92% over ~18s; never reaches 100% until streaming completes
-  const progressPct = Math.min(92, Math.round(100 * (1 - Math.exp(-elapsed / 6))));
+  // Cosmetic progress bar: asymptotes toward 92% over ~18 s, jumps to 100% when fading
+  const progressPct = fading ? 100 : Math.min(92, Math.round(100 * (1 - Math.exp(-elapsed / 6))));
 
   return (
-    <Card className="border-primary/30 bg-primary/[0.03]">
-      <CardContent className="space-y-4 py-5">
-        <div className="flex items-start gap-3">
-          <span className="relative mt-1 inline-flex h-2.5 w-2.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Generating your negotiation plan"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 50,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        // Frosted-glass dark backdrop
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        opacity: fading ? 0 : 1,
+        transition: "opacity 500ms ease",
+        pointerEvents: fading ? "none" : "auto",
+      }}
+    >
+      {/* Dialog card */}
+      <div
+        style={{
+          background: "var(--card)",
+          border: "1px solid var(--border)",
+          borderRadius: "1.25rem",
+          padding: "2.5rem 3rem",
+          width: "min(620px, 92vw)",
+          boxShadow: "0 30px 80px rgba(0,0,0,0.4)",
+          transform: fading ? "scale(0.97)" : "scale(1)",
+          transition: "transform 500ms ease",
+        }}
+      >
+        {/* Pulsing dot + title */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+          <span style={{ position: "relative", marginTop: "0.3rem", display: "inline-flex", flexShrink: 0 }}>
+            <span
+              style={{
+                position: "absolute",
+                inset: 0,
+                borderRadius: "9999px",
+                background: "var(--primary)",
+                opacity: 0.7,
+                animation: "ping 1s cubic-bezier(0,0,0.2,1) infinite",
+              }}
+            />
+            <span
+              style={{
+                position: "relative",
+                width: "10px",
+                height: "10px",
+                borderRadius: "9999px",
+                background: "var(--primary)",
+                display: "inline-flex",
+              }}
+            />
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="font-semibold tracking-tight">Generating your negotiation plan</h2>
-              <span className="font-mono text-xs text-muted-foreground tabular-nums">
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "0.5rem", flexWrap: "wrap" }}>
+              <h2 style={{ fontWeight: 700, fontSize: "1.2rem", letterSpacing: "-0.02em", margin: 0 }}>
+                Generating your negotiation plan
+              </h2>
+              <span style={{ fontFamily: "monospace", fontSize: "0.8rem", color: "var(--muted-foreground)", tabularNums: true } as React.CSSProperties}>
                 {elapsed}s · usually 10–15s
               </span>
             </div>
-            <p className="mt-1.5 text-sm text-muted-foreground transition-opacity">
-              <span className="text-foreground/90">{steps[stepIdx]}</span>
+            {/* Cycling step text */}
+            <p
+              key={stepIdx}
+              style={{
+                marginTop: "0.75rem",
+                fontSize: "0.95rem",
+                color: "var(--muted-foreground)",
+                animation: "fadeInStep 0.4s ease",
+              }}
+            >
+              {steps[stepIdx]}
             </p>
           </div>
         </div>
 
-        <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
+        {/* Progress bar */}
+        <div
+          style={{
+            marginTop: "1.75rem",
+            height: "8px",
+            width: "100%",
+            borderRadius: "9999px",
+            background: "var(--muted)",
+            overflow: "hidden",
+          }}
+        >
           <div
-            className="h-full rounded-full bg-primary transition-all duration-700 ease-out"
-            style={{ width: `${progressPct}%` }}
+            style={{
+              height: "100%",
+              borderRadius: "9999px",
+              background: "var(--primary)",
+              width: `${progressPct}%`,
+              transition: "width 700ms ease-out",
+            }}
           />
         </div>
-      </CardContent>
-    </Card>
+
+        {/* Helper text */}
+        <p style={{ marginTop: "1rem", fontSize: "0.75rem", color: "var(--muted-foreground)", textAlign: "center" }}>
+          Analysing your loan profile and market data…
+        </p>
+      </div>
+
+      {/* Keyframe styles injected inline */}
+      <style>{`
+        @keyframes ping {
+          75%, 100% { transform: scale(2); opacity: 0; }
+        }
+        @keyframes fadeInStep {
+          from { opacity: 0; transform: translateY(4px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
   );
 }
 
@@ -526,6 +651,53 @@ function CopyButton({ text }: { text: string }) {
       }}
     >
       {copied ? "Copied ✓" : "Copy"}
+    </Button>
+  );
+}
+
+function GmailButton({ subject, body }: { subject: string; body: string }) {
+  const disabled = !subject.trim() && !body.trim();
+
+  const handleOpenGmail = () => {
+    // Open Gmail compose as a small centred popup window (not a full tab).
+    // Omit &fs=1 so Gmail starts in compact compose mode.
+    const gmailUrl =
+      "https://mail.google.com/mail/?view=cm" +
+      `&su=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`;
+    const w = 600;
+    const h = 680;
+    const left = Math.max(0, Math.round((screen.width  - w) / 2));
+    const top  = Math.max(0, Math.round((screen.height - h) / 2));
+    window.open(
+      gmailUrl,
+      "gmail_compose",
+      `width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`,
+    );
+  };
+
+  return (
+    <Button
+      variant="default"
+      size="sm"
+      disabled={disabled}
+      onClick={handleOpenGmail}
+      className="gap-1.5"
+    >
+      {/* Official Gmail M logo */}
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 48 48"
+        className="h-4 w-4"
+        aria-hidden="true"
+      >
+        <path fill="#4caf50" d="M45 16.2l-5 2.75-5 4.75V40h7a3 3 0 003-3V16.2z" />
+        <path fill="#1e88e5" d="M3 16.2l3.5 2.75L13 23.7V40H6a3 3 0 01-3-3V16.2z" />
+        <polygon fill="#e53935" points="35,11.2 24,19.45 13,11.2 12,17 13,23.7 24,31.95 35,23.7 36,17" />
+        <path fill="#c62828" d="M3 12.298V16.2l10 7.5V11.2L9.876 8.859C9.132 8.301 8.228 8 7.298 8c-2.374 0-4.298 1.924-4.298 4.298z" />
+        <path fill="#fbc02d" d="M45 12.298V16.2l-10 7.5V11.2l3.124-2.341C38.868 8.301 39.772 8 40.702 8c2.374 0 4.298 1.924 4.298 4.298z" />
+      </svg>
+      Open in Gmail
     </Button>
   );
 }
