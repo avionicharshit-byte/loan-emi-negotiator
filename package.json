@@ -39,7 +39,11 @@
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.5",
+    "jiti": "2.6.1",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "jiti": "2.6.1"
   }
 }
