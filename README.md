@@ -102,6 +102,32 @@ npm run lint
 npm run build
 ```
 
+## Deploy On Netlify
+
+This repo includes `netlify.toml`, `.nvmrc`, and `.node-version` so Netlify can build the app directly from GitHub.
+
+In the Netlify dashboard:
+
+- Connect the GitHub repository.
+- Build command: `npm run build`
+- Publish directory: `.next`
+- Node version: `20`
+
+Set environment variables in Netlify:
+
+```bash
+GEMINI_API_KEY=your_real_key_here
+DEMO_FALLBACK=true
+```
+
+For a quota-proof public demo, use:
+
+```bash
+DEMO_MODE=true
+```
+
+`DEMO_MODE=true` skips live Gemini calls and uses deterministic sample output. Leave it unset if you want live AI generation, with `DEMO_FALLBACK=true` as the safety net.
+
 ## Tech Stack
 
 - Next.js 16 App Router
