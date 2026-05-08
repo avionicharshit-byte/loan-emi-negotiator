@@ -13,7 +13,9 @@ export function NegotiateApp() {
 
   useEffect(() => {
     const loaded = readSharedProfileFromLocation();
-    if (loaded) setSharedProfile(loaded);
+    if (!loaded) return;
+    const id = window.setTimeout(() => setSharedProfile(loaded), 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   if (!profile) {

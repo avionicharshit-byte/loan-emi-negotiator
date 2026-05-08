@@ -1,36 +1,127 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Loan EMI Negotiator
 
-## Getting Started
+AI assistant that turns an Indian borrower's loan profile into a lender-specific rate negotiation plan, draft email, and phone script.
 
-First, run the development server:
+Most borrowers know they are probably paying too much, but the hard part is turning that hunch into a credible ask. This project explores that last mile: using AI to produce a concrete action artifact grounded in CIBIL bands, lender rate-card floors, repayment history, and RBI-linked rate movement.
+
+## What It Does
+
+- Collects a home, personal, or auto loan profile with sensible defaults for quick demos.
+- Optionally extracts loan details from a PDF or image statement using Gemini.
+- Streams a structured negotiation plan from `/api/negotiate`.
+- Produces a target rate range, savings estimate, ranked arguments with source URLs, a concise email draft, a phone script, objection handling, assumptions, and confidence.
+- Keeps the human in control: nothing is auto-sent, and the email stays editable.
+
+## Proof It Runs
+
+```bash
+$ npm run lint
+
+> loan-emi-negotiator@0.1.0 lint
+> eslint
+```
+
+```bash
+$ npm run build
+
+> loan-emi-negotiator@0.1.0 build
+> next build
+
+▲ Next.js 16.2.5 (Turbopack)
+✓ Compiled successfully in 6.3s
+✓ Generating static pages using 7 workers (8/8) in 313ms
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/counter
+├ ƒ /api/extract
+├ ƒ /api/negotiate
+└ ○ /negotiate
+```
+
+```text
+Generated artifact shape:
+
+Target rate band
+Savings estimate
+Ranked negotiation arguments with sources
+Draft email to the lender or relationship manager
+Phone script with objection handling
+Assumptions and confidence level
+```
+
+## Product Insight
+
+The product bet is that finance AI becomes useful when it moves from "explaining" to "acting". A generic chatbot can explain repo rates, EBLR, or CIBIL bands; the user still has to decide what to say to the bank. This app focuses on producing the artifact the borrower actually needs: a respectful, specific, lender-aware negotiation request.
+
+The trust design matters more than the model call. The app shows assumptions, confidence, source links, and editable output because a borrower should not blindly send AI-generated financial communication. The model is useful as a drafter and strategist, not as an authority.
+
+The strongest PM lesson: narrow scope makes the AI feel more reliable. Instead of "AI personal finance", this targets one painful workflow: "I think my bank should reduce my rate, but I do not know how to ask."
+
+## How To Run Locally
+
+Requirements:
+
+- Node.js 20+
+- npm
+- Gemini API key from Google AI Studio
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Update `.env.local`:
+
+```bash
+GEMINI_API_KEY=your_real_key_here
+# Optional
+GEMINI_MODEL=gemini-2.5-flash-lite
+```
+
+Start the app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`, then click `Try the agent` or go directly to `http://localhost:3000/negotiate`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Useful checks:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- AI SDK with Google Gemini
+- Zod schemas for structured AI output
+- React Hook Form
+- Tailwind CSS
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## What Is Not There Yet
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- The lender rate-card snapshot is hardcoded in `lib/domain.ts`; a production version should refresh and audit this data regularly.
+- The generated advice is not financial advice and must be verified against the borrower's lender and loan agreement.
+- Statement extraction depends on the quality and format of uploaded PDFs or images.
+- There is no user account system, persistence layer, or encrypted document storage.
+- There is no automated evaluation suite for hallucination, source quality, or negotiation-plan usefulness yet.
+- The app currently supports a small set of Indian lender patterns and loan types.
 
-## Deploy on Vercel
+## Repository Hygiene
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Local secrets and generated files are ignored:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `.env.local` and other local env files
+- `node_modules/`
+- `.next/`, `out/`, and build output
+- IDE files such as `.idea/`, `.vscode/`, and `.claude/`
+- TypeScript build info
+
+`.env.example` is intentionally committed so setup is clear without exposing secrets.
