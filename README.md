@@ -1,160 +1,115 @@
 # Loan EMI Negotiator
 
-AI assistant that turns an Indian borrower's loan profile into a lender-specific rate negotiation plan, draft email, and phone script.
+An AI agent that turns an Indian borrower's loan profile into a lender-specific rate-negotiation artifact: target rate band, ranked arguments with sources, draft email, and phone script.
 
-Most borrowers know they are probably paying too much, but the hard part is turning that hunch into a credible ask. This project explores that last mile: using AI to produce a concrete action artifact grounded in CIBIL bands, lender rate-card floors, repayment history, and RBI-linked rate movement.
+**Live demo →** [loan-emi-negotiator.netlify.app](https://loan-emi-negotiator.netlify.app/)
 
-## What It Does
+> Most borrowers know they're probably overpaying. The hard part isn't knowing — it's **writing the actual ask**. This product collapses that last mile.
 
-- Collects a home, personal, or auto loan profile with sensible defaults for quick demos.
-- Supports home, personal, auto, loan against property, education, gold, and business loan scenarios.
-- Includes demo profiles and a deterministic fallback so quota issues do not break a walkthrough.
-- Optionally extracts loan details from a PDF or image statement using Gemini.
-- Streams a structured negotiation plan from `/api/negotiate`.
-- Produces a target rate range, savings estimate, ranked arguments with source URLs, a concise email draft, a phone script, objection handling, assumptions, and confidence.
-- Keeps the human in control: nothing is auto-sent, and the email stays editable.
+## The problem
 
-## Proof It Runs
+Indian retail borrowers typically pay **0.5–1.5% above their lender's own published rate floor** for the same CIBIL band, simply because they never write the email asking for a reset. Generic finance chatbots explain repo rates and EBLR; the borrower still has to figure out *what to say to the bank*. The gap between **informing** and **acting** is where the real product value lives — and where trust is hardest.
 
-```bash
-$ npm run lint
+## The product wedge
 
-> loan-emi-negotiator@0.1.0 lint
-> eslint
+Three deliberate scope choices that shape the whole product:
+
+1. **One painful workflow, not "AI personal finance".** The agent does one thing: produce a credible, lender-aware rate-reduction request. Narrow scope is what makes the AI feel reliable.
+2. **Action artifact, not a chat.** Output is a structured plan — target rate, ranked arguments, email, phone script — that the user can edit and send. No conversational ambiguity.
+3. **Trust design over model quality.** Every claim cites a source. Assumptions and confidence are surfaced. Nothing auto-sends. The model is a drafter and strategist, not an authority.
+
+## What the user gets
+
+A single artifact, generated in ~90 seconds:
+
+- **Target rate band** mapped to the lender's published EBLR floor + the borrower's CIBIL band
+- **Estimated EMI reduction & total interest saved**
+- **Ranked negotiation arguments**, each with a public RBI / lender source URL
+- **Draft email** to the relationship manager (editable)
+- **Phone script** with three pre-handled objections
+- **Stated assumptions, confidence level, and missing inputs**
+
+Supports home, personal, auto, LAP, education, gold, and business loans across major Indian lenders (SBI, HDFC, ICICI, Axis, Kotak, BoB, PNB, etc.).
+
+## Key product decisions
+
+| Decision | Why |
+|---|---|
+| Hardcoded lender rate-card snapshot in `lib/domain.ts` | Grounds the model with verifiable floors. A live scrape would be more accurate but introduces audit/freshness risk for a portfolio MVP — explicitly flagged as a follow-up. |
+| Optional statement upload (PDF/image) → Gemini extract | Removes the biggest drop-off — manual data entry — without making the doc upload a hard requirement. Users can still type values in. |
+| Demo profiles + deterministic fallback | A live walkthrough cannot fail because of API quota. Reliability is a product feature when a recruiter or stakeholder is watching. |
+| Streaming structured output (Zod schema) | Faster perceived latency *and* a typed contract that prevents malformed plans from rendering. |
+| Editable email + phone script | The model drafts; the human commits. Treats the borrower as accountable, not as a passive consumer of AI output. |
+
+## Reliability architecture (graceful degradation)
+
+The agent is built to **never show a broken state** during a demo or a quota spike. The negotiate route walks down a fallback ladder:
+
+```
+DEMO_MODE=true ─────────► deterministic plan from lib/demo.ts            (no API call)
+       │
+       ▼
+GEMINI_API_KEY missing ─► deterministic plan (if DEMO_FALLBACK on)       OR 500 error
+       │
+       ▼
+gemini-2.5-flash-lite ─► generates plan ✓
+       │ (rate-limit / 5xx)
+       ▼
+gemini-2.5-flash ──────► generates plan ✓
+       │ (rate-limit / 5xx)
+       ▼
+gemini-2.0-flash-lite ─► generates plan ✓
+       │ (rate-limit / 5xx)
+       ▼
+gemini-2.0-flash ──────► generates plan ✓
+       │ (all four exhausted)
+       ▼
+DEMO_FALLBACK=true ────► deterministic plan (response tagged X-Demo-Reason)
+       │ else
+       ▼
+429 rate_limited / 500 generation_failed (surfaced to UI)
 ```
 
-```bash
-$ npm run build
+Every fallback response carries an `X-Demo-Reason` header (`demo_mode`, `missing_api_key`, `quota_fallback`, `provider_fallback`) so it's auditable in the network tab.
 
-> loan-emi-negotiator@0.1.0 build
-> next build
+## Tech stack
 
-▲ Next.js 16.2.5 (Turbopack)
-✓ Compiled successfully in 6.3s
-✓ Generating static pages using 7 workers (8/8) in 313ms
+Next.js 16 (App Router) · React 19 · TypeScript · AI SDK + Google Gemini · Zod schemas · React Hook Form · Tailwind CSS
 
-Route (app)
-┌ ○ /
-├ ○ /_not-found
-├ ƒ /api/counter
-├ ƒ /api/extract
-├ ƒ /api/negotiate
-└ ○ /negotiate
-```
-
-```text
-Generated artifact shape:
-
-Target rate band
-Savings estimate
-Ranked negotiation arguments with sources
-Draft email to the lender or relationship manager
-Phone script with objection handling
-Assumptions and confidence level
-```
-
-## Product Insight
-
-The product bet is that finance AI becomes useful when it moves from "explaining" to "acting". A generic chatbot can explain repo rates, EBLR, or CIBIL bands; the user still has to decide what to say to the bank. This app focuses on producing the artifact the borrower actually needs: a respectful, specific, lender-aware negotiation request.
-
-The trust design matters more than the model call. The app shows assumptions, confidence, source links, and editable output because a borrower should not blindly send AI-generated financial communication. The model is useful as a drafter and strategist, not as an authority.
-
-The strongest PM lesson: narrow scope makes the AI feel more reliable. Instead of "AI personal finance", this targets one painful workflow: "I think my bank should reduce my rate, but I do not know how to ask."
-
-## How To Run Locally
-
-Requirements:
-
-- Node.js 20+
-- npm
-- Gemini API key from Google AI Studio
+## Run locally
 
 ```bash
 npm install
 cp .env.example .env.local
-```
-
-Update `.env.local`:
-
-```bash
-GEMINI_API_KEY=your_real_key_here
-# Optional
-GEMINI_MODEL=gemini-2.5-flash-lite
-
-# Optional: use this before demos if you do not want to depend on API quota
-DEMO_MODE=true
-```
-
-Start the app:
-
-```bash
+# Add GEMINI_API_KEY (from Google AI Studio)
 npm run dev
 ```
 
-Open `http://localhost:3000`, then click `Try the agent` or go directly to `http://localhost:3000/negotiate`.
+Open `http://localhost:3000` → click *Try the agent* or go to `/negotiate`.
 
-For a reliable live demo, set `DEMO_MODE=true` in `.env.local`, restart the dev server, and click one of the demo profiles at the top of the form. The visible loan basics should change immediately when a profile is selected.
+For a quota-proof local demo: set `DEMO_MODE=true` in `.env.local` and restart.
 
-Useful checks:
+## Deploy on Netlify
 
-```bash
-npm run lint
-npm run build
-```
-
-## Deploy On Netlify
-
-This repo includes `netlify.toml`, `.nvmrc`, and `.node-version` so Netlify can build the app directly from GitHub.
+`netlify.toml`, `.nvmrc`, and `.node-version` are committed.
 
 In the Netlify dashboard:
+- Build command: `npm run build` · Publish dir: `.next` · Node: 20
+- Set `GEMINI_API_KEY` (Functions + Builds scope, never `NEXT_PUBLIC_`)
+- For a public portfolio link, also set `DEMO_MODE=true` to prevent quota drain by visitors
+- Or set `DEMO_FALLBACK=true` for live AI with deterministic fallback on errors
 
-- Connect the GitHub repository.
-- Build command: `npm run build`
-- Publish directory: `.next`
-- Node version: `20`
+## What's not there yet
 
-Set environment variables in Netlify:
+Intentional follow-ups, called out so the scope is honest:
 
-```bash
-GEMINI_API_KEY=your_real_key_here
-DEMO_FALLBACK=true
-```
+- Lender rate-card data is a hand-curated snapshot, not a live scrape with audit trail.
+- Generated advice is not financial advice — must be verified against the loan agreement.
+- Statement extraction quality varies with PDF/image quality.
+- No persistence, accounts, or encrypted document storage.
+- No automated eval suite for hallucination, source quality, or plan usefulness.
+- Non-home-loan pricing uses indicative benchmarks rather than fully scraped lender-specific cards.
 
-For a quota-proof public demo, use:
+## Not financial advice
 
-```bash
-DEMO_MODE=true
-```
-
-`DEMO_MODE=true` skips live Gemini calls and uses deterministic sample output. Leave it unset if you want live AI generation, with `DEMO_FALLBACK=true` as the safety net.
-
-## Tech Stack
-
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- AI SDK with Google Gemini
-- Zod schemas for structured AI output
-- React Hook Form
-- Tailwind CSS
-
-## What Is Not There Yet
-
-- The lender rate-card snapshot is hardcoded in `lib/domain.ts`; a production version should refresh and audit this data regularly.
-- The generated advice is not financial advice and must be verified against the borrower's lender and loan agreement.
-- Statement extraction depends on the quality and format of uploaded PDFs or images.
-- There is no user account system, persistence layer, or encrypted document storage.
-- There is no automated evaluation suite for hallucination, source quality, or negotiation-plan usefulness yet.
-- The app supports common Indian loan categories, but some non-home-loan pricing uses indicative benchmarks rather than fully scraped lender-specific rate cards.
-
-## Repository Hygiene
-
-Local secrets and generated files are ignored:
-
-- `.env.local` and other local env files
-- `node_modules/`
-- `.next/`, `out/`, and build output
-- IDE files such as `.idea/`, `.vscode/`, and `.claude/`
-- TypeScript build info
-
-`.env.example` is intentionally committed so setup is clear without exposing secrets.
+Snapshot data dated May 2026. Verify every rate, fee, and slab with your lender before acting.
