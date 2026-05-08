@@ -6,10 +6,15 @@ import { loanProfileSchema, negotiationPlanSchema } from "@/lib/schema";
 
 export const runtime = "nodejs";
 
-// Extend maxDuration to account for up to 3 retries with ~20 s waits each.
+// Extend maxDuration to account for fallback attempts and potential waits.
 export const maxDuration = 120;
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+// Order of models to try. If one is rate-limited, we immediately try the next.
+const FALLBACK_MODELS = [
+  "gemini-2.5-flash-lite",
+  "gemini-2.5-flash",
+  "gemini-1.5-flash",
+];
 
 const google = createGoogleGenerativeAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -55,57 +60,60 @@ Loan profile:
 ${profile.competingOffer?.lender ? `- Competing offer: ${profile.competingOffer.lender} at ${profile.competingOffer.rate}%` : "- Competing offer: none disclosed"}
 ${profile.additionalContext ? `- Additional context: ${profile.additionalContext}` : ""}
 
-Build the most credible plan you can with this profile. Map the borrower to the lender's published rate-card tier. Use the data snapshot for repo rate and EBLR floors. Be specific — never generic. If a key input is missing, mark confidence accordingly and list the missing inputs in assumptions.`;
+Build the most credible plan you can with this profile. Map the borrower to the lender's published rate-card tier. Use the data snapshot for repo rate and EBLR floors. Be specific \u2014 never generic. If a key input is missing, mark confidence accordingly and list the missing inputs in assumptions.`;
 
-  // ─── Retry loop for 429 / RESOURCE_EXHAUSTED ──────────────────────────────
-  // Gemini's free tier has a strict requests-per-minute cap. When hit, Gemini
-  // embeds a "retry in Xs" hint in the error. We honour that hint and retry
-  // automatically (up to MAX_ATTEMPTS) so demo viewers never see an error.
-  const MAX_ATTEMPTS = 3;
-  const DEFAULT_RETRY_DELAY_MS = 20_000; // fallback if hint not in error
+  // ─── Retry & Fallback Logic ──────────────────────────────────────────────
+  // We try each model in FALLBACK_MODELS in order. If a model hits a rate limit,
+  // we immediately jump to the next model in the list. If ALL models in the list
+  // are rate-limited, we wait and retry the whole cycle once more.
+  const MAX_CYCLES = 2; 
+  const DEFAULT_RETRY_DELAY_MS = 20_000;
 
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    try {
-      const result = streamObject({
-        model: google(MODEL),
-        schema: negotiationPlanSchema,
-        system: buildSystemPrompt(),
-        prompt: userMessage,
-        temperature: 0.4,
-      });
+  for (let cycle = 1; cycle <= MAX_CYCLES; cycle++) {
+    for (const modelId of FALLBACK_MODELS) {
+      try {
+        console.log(`[negotiate] Attempting with ${modelId} (Cycle ${cycle})`);
+        
+        const result = streamObject({
+          model: google(modelId),
+          schema: negotiationPlanSchema,
+          system: buildSystemPrompt(),
+          prompt: userMessage,
+          temperature: 0.4,
+        });
 
-      return result.toTextStreamResponse();
-    } catch (err: unknown) {
-      lastError = err;
+        return result.toTextStreamResponse();
+      } catch (err: unknown) {
+        lastError = err;
+        const msg = err instanceof Error ? err.message : String(err);
+        const isRateLimit = /RESOURCE_EXHAUSTED|quota|429/i.test(msg);
 
-      const msg = err instanceof Error ? err.message : String(err);
-      const isRateLimit = /RESOURCE_EXHAUSTED|quota|429/i.test(msg);
+        if (!isRateLimit) {
+          // If it's a real logic error (not a quota issue), stop immediately.
+          break;
+        }
 
-      if (!isRateLimit || attempt === MAX_ATTEMPTS) {
-        // Not a rate-limit error, or we've exhausted all retries — break out.
-        break;
+        console.warn(`[negotiate] ${modelId} rate-limited. Trying next fallback...`);
+        // Continue to the next modelId in FALLBACK_MODELS immediately.
       }
+    }
 
-      // Parse the suggested wait from the Gemini error message, e.g.:
-      //   "Please retry in 18.638263348s."
+    // If we get here, it means we cycled through ALL models and all were rate-limited.
+    if (cycle < MAX_CYCLES) {
+      const msg = lastError instanceof Error ? lastError.message : String(lastError);
       const retryMatch = msg.match(/retry in ([\d.]+)\s*s/i);
       const waitMs = retryMatch
-        ? Math.ceil(parseFloat(retryMatch[1])) * 1000 + 500 // +500 ms safety buffer
+        ? Math.ceil(parseFloat(retryMatch[1])) * 1000 + 500
         : DEFAULT_RETRY_DELAY_MS;
 
-      console.warn(
-        `[negotiate] Rate-limited by Gemini (attempt ${attempt}/${MAX_ATTEMPTS}). ` +
-          `Waiting ${waitMs}ms before retry…`,
-      );
-
+      console.warn(`[negotiate] All models rate-limited. Waiting ${waitMs}ms before final cycle...`);
       await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
     }
   }
 
-  // All attempts failed — return a structured error so the frontend
-  // ErrorCard renders a friendly message instead of crashing.
+  // Final fallback: return structured error if everything failed.
   const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
   const isRateLimit = /RESOURCE_EXHAUSTED|quota|429/i.test(errMsg);
 

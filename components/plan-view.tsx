@@ -367,9 +367,9 @@ function parseAgentError(error: Error): {
     return {
       title: "Gemini rate limit hit",
       message:
-        "The free-tier rate limit was reached. The app automatically retried 3 times but the limit is still active. Please wait about 1 minute and click Retry.",
+        "All available Gemini models (Flash-Lite, Flash 2.5, and Flash 1.5) are currently rate-limited. The app automatically cycled through them but could not get a response.",
       hint:
-        "This only happens during heavy bursts. Normal demo usage (one request every ~20 s) works fine on the free tier.",
+        "This is rare! It means you've hit the combined quota for all three models. Please wait about 1 minute and click Retry.",
       docsUrl: "https://ai.google.dev/gemini-api/docs/rate-limits",
       docsLabel: "Gemini rate limits →",
     };
