@@ -218,16 +218,16 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
           </select>
         </Field>
         <Field label="Principal outstanding (₹)" error={errors.principalOutstanding?.message} autofilled={af("principalOutstanding")}>
-          <Input type="number" step="1000" {...register("principalOutstanding", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("principalOutstanding", { valueAsNumber: true })} />
         </Field>
         <Field label="Current rate (%)" error={errors.currentRate?.message} autofilled={af("currentRate")}>
-          <Input type="number" step="0.01" {...register("currentRate", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("currentRate", { valueAsNumber: true })} />
         </Field>
         <Field label="Tenure remaining (months)" error={errors.tenureRemainingMonths?.message} autofilled={af("tenureRemainingMonths")}>
-          <Input type="number" {...register("tenureRemainingMonths", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("tenureRemainingMonths", { valueAsNumber: true })} />
         </Field>
         <Field label="Current EMI (₹)" error={errors.currentEMI?.message} autofilled={af("currentEMI")}>
-          <Input type="number" step="100" {...register("currentEMI", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("currentEMI", { valueAsNumber: true })} />
         </Field>
         <Field label="Loan sanction date" error={errors.sanctionDate?.message} autofilled={af("sanctionDate")}>
           <Input type="month" {...register("sanctionDate")} />
@@ -236,16 +236,16 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
 
       <Section title="Your profile">
         <Field label="CIBIL score" error={errors.cibilScore?.message} autofilled={af("cibilScore")}>
-          <Input type="number" {...register("cibilScore", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("cibilScore", { valueAsNumber: true })} />
         </Field>
         <Field label="On-time EMIs paid" error={errors.emisPaidOnTime?.message} autofilled={af("emisPaidOnTime")}>
-          <Input type="number" {...register("emisPaidOnTime", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("emisPaidOnTime", { valueAsNumber: true })} />
         </Field>
         <Field label="Prepayments made (total ₹)" error={errors.prepaymentsTotal?.message} autofilled={af("prepaymentsTotal")}>
-          <Input type="number" step="1000" {...register("prepaymentsTotal", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("prepaymentsTotal", { valueAsNumber: true })} />
         </Field>
         <Field label="Monthly income (₹)" error={errors.monthlyIncome?.message} autofilled={af("monthlyIncome")}>
-          <Input type="number" step="1000" {...register("monthlyIncome", { valueAsNumber: true })} />
+          <Input type="number" step="any" {...register("monthlyIncome", { valueAsNumber: true })} />
         </Field>
         <Field label="Employer category" error={errors.employerCategory?.message} autofilled={af("employerCategory")}>
           <select
@@ -268,7 +268,7 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
         <Field label="Competing offer rate (%, optional)">
           <Input
             type="number"
-            step="0.01"
+            step="any"
             placeholder="e.g., 8.55"
             {...register("competingOffer.rate", {
               setValueAs: (v) => (v === "" || v == null ? undefined : Number(v)),
