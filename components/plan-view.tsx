@@ -363,16 +363,13 @@ function parseAgentError(error: Error): {
 } {
   const raw = error.message ?? "";
 
-  if (/RESOURCE_EXHAUSTED|quota|429/i.test(raw)) {
-    const retryMatch = raw.match(/retry in ([\d.]+)\s*s/i);
-    const retrySec = retryMatch ? Math.ceil(parseFloat(retryMatch[1])) : null;
+  if (/RESOURCE_EXHAUSTED|quota|429|rate_limited/i.test(raw)) {
     return {
-      title: "Daily free quota reached",
-      message: retrySec
-        ? `You've hit Gemini's free-tier daily limit. Try again in ~${retrySec} seconds, or wait for the daily reset.`
-        : "You've hit Gemini's free-tier daily limit. Try again in a few seconds, or wait for the daily reset.",
+      title: "Gemini rate limit hit",
+      message:
+        "The free-tier rate limit was reached. The app automatically retried 3 times but the limit is still active. Please wait about 1 minute and click Retry.",
       hint:
-        "Tip: switch to gemini-2.5-flash-lite (default) for higher free-tier limits, or enable billing on your Google AI project for production usage.",
+        "This only happens during heavy bursts. Normal demo usage (one request every ~20 s) works fine on the free tier.",
       docsUrl: "https://ai.google.dev/gemini-api/docs/rate-limits",
       docsLabel: "Gemini rate limits →",
     };
