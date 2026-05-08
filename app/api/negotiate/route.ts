@@ -1,7 +1,14 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamObject } from "ai";
+import { generateObject } from "ai";
 
 import { buildSystemPrompt } from "@/lib/domain";
+import {
+  allowsDemoFallback,
+  buildDemoNegotiationPlan,
+  createObjectTextStreamResponse,
+  isDemoMode,
+  isQuotaLikeError,
+} from "@/lib/demo";
 import { loanProfileSchema, negotiationPlanSchema } from "@/lib/schema";
 
 export const runtime = "nodejs";
@@ -13,7 +20,8 @@ export const maxDuration = 120;
 const FALLBACK_MODELS = [
   "gemini-2.5-flash-lite",
   "gemini-2.5-flash",
-  "gemini-1.5-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.0-flash",
 ];
 
 const google = createGoogleGenerativeAI({
@@ -21,16 +29,6 @@ const google = createGoogleGenerativeAI({
 });
 
 export async function POST(req: Request) {
-  if (!process.env.GEMINI_API_KEY) {
-    return new Response(
-      JSON.stringify({
-        error: "missing_api_key",
-        message: "GEMINI_API_KEY is not set. Add it to .env.local and restart the dev server.",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
   const json = await req.json();
   const parsed = loanProfileSchema.safeParse(json);
   if (!parsed.success) {
@@ -41,6 +39,28 @@ export async function POST(req: Request) {
   }
 
   const profile = parsed.data;
+
+  if (isDemoMode()) {
+    return createObjectTextStreamResponse(buildDemoNegotiationPlan(profile), {
+      headers: { "X-Demo-Reason": "demo_mode" },
+    });
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    if (allowsDemoFallback()) {
+      return createObjectTextStreamResponse(buildDemoNegotiationPlan(profile), {
+        headers: { "X-Demo-Reason": "missing_api_key" },
+      });
+    }
+
+    return new Response(
+      JSON.stringify({
+        error: "missing_api_key",
+        message: "GEMINI_API_KEY is not set. Add it to .env.local and restart the dev server.",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   const userMessage = `Generate a negotiation plan for this borrower.
 
@@ -62,60 +82,45 @@ ${profile.additionalContext ? `- Additional context: ${profile.additionalContext
 
 Build the most credible plan you can with this profile. Map the borrower to the lender's published rate-card tier. Use the data snapshot for repo rate and EBLR floors. Be specific \u2014 never generic. If a key input is missing, mark confidence accordingly and list the missing inputs in assumptions.`;
 
-  // ─── Retry & Fallback Logic ──────────────────────────────────────────────
-  // We try each model in FALLBACK_MODELS in order. If a model hits a rate limit,
-  // we immediately jump to the next model in the list. If ALL models in the list
-  // are rate-limited, we wait and retry the whole cycle once more.
-  const MAX_CYCLES = 2; 
-  const DEFAULT_RETRY_DELAY_MS = 20_000;
-
   let lastError: unknown;
 
-  for (let cycle = 1; cycle <= MAX_CYCLES; cycle++) {
-    for (const modelId of FALLBACK_MODELS) {
-      try {
-        console.log(`[negotiate] Attempting with ${modelId} (Cycle ${cycle})`);
-        
-        const result = streamObject({
-          model: google(modelId),
-          schema: negotiationPlanSchema,
-          system: buildSystemPrompt(),
-          prompt: userMessage,
-          temperature: 0.4,
+  for (const modelId of FALLBACK_MODELS) {
+    try {
+      console.log(`[negotiate] Attempting with ${modelId}`);
+
+      const { object } = await generateObject({
+        model: google(modelId),
+        schema: negotiationPlanSchema,
+        system: buildSystemPrompt(),
+        prompt: userMessage,
+        temperature: 0.4,
+      });
+
+      return createObjectTextStreamResponse(object, {
+        headers: { "X-Model": modelId },
+      });
+    } catch (err: unknown) {
+      lastError = err;
+      console.warn(`[negotiate] ${modelId} failed:`, err);
+
+      if (allowsDemoFallback()) {
+        return createObjectTextStreamResponse(buildDemoNegotiationPlan(profile), {
+          headers: {
+            "X-Demo-Reason": isQuotaLikeError(err) ? "quota_fallback" : "provider_fallback",
+          },
         });
-
-        return result.toTextStreamResponse();
-      } catch (err: unknown) {
-        lastError = err;
-        const msg = err instanceof Error ? err.message : String(err);
-        const isRateLimit = /RESOURCE_EXHAUSTED|quota|429/i.test(msg);
-
-        if (!isRateLimit) {
-          // If it's a real logic error (not a quota issue), stop immediately.
-          break;
-        }
-
-        console.warn(`[negotiate] ${modelId} rate-limited. Trying next fallback...`);
-        // Continue to the next modelId in FALLBACK_MODELS immediately.
       }
-    }
-
-    // If we get here, it means we cycled through ALL models and all were rate-limited.
-    if (cycle < MAX_CYCLES) {
-      const msg = lastError instanceof Error ? lastError.message : String(lastError);
-      const retryMatch = msg.match(/retry in ([\d.]+)\s*s/i);
-      const waitMs = retryMatch
-        ? Math.ceil(parseFloat(retryMatch[1])) * 1000 + 500
-        : DEFAULT_RETRY_DELAY_MS;
-
-      console.warn(`[negotiate] All models rate-limited. Waiting ${waitMs}ms before final cycle...`);
-      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
     }
   }
 
-  // Final fallback: return structured error if everything failed.
   const errMsg = lastError instanceof Error ? lastError.message : String(lastError);
-  const isRateLimit = /RESOURCE_EXHAUSTED|quota|429/i.test(errMsg);
+  const isRateLimit = isQuotaLikeError(lastError);
+
+  if (allowsDemoFallback()) {
+    return createObjectTextStreamResponse(buildDemoNegotiationPlan(profile), {
+      headers: { "X-Demo-Reason": isRateLimit ? "quota_fallback" : "provider_fallback" },
+    });
+  }
 
   return new Response(
     JSON.stringify({

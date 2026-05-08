@@ -1,7 +1,33 @@
 import { z } from "zod";
 
-export const LOAN_TYPES = ["home", "personal", "auto"] as const;
-export const LENDERS = ["HDFC", "SBI", "ICICI", "Other"] as const;
+export const LOAN_TYPES = [
+  "home",
+  "personal",
+  "auto",
+  "loan_against_property",
+  "education",
+  "gold",
+  "business",
+] as const;
+export const LOAN_TYPE_LABELS: Record<(typeof LOAN_TYPES)[number], string> = {
+  home: "Home",
+  personal: "Personal",
+  auto: "Auto",
+  loan_against_property: "Loan against property",
+  education: "Education",
+  gold: "Gold",
+  business: "Business",
+};
+export const LENDERS = [
+  "HDFC",
+  "SBI",
+  "ICICI",
+  "Axis",
+  "Kotak",
+  "Bank of Baroda",
+  "PNB",
+  "Other",
+] as const;
 export const EMPLOYER_CATEGORIES = ["Government / PSU", "MNC / Listed Co.", "Private (unlisted)", "Self-employed"] as const;
 
 export const loanProfileSchema = z.object({

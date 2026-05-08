@@ -8,7 +8,7 @@ import { EMPLOYER_CATEGORIES, LENDERS, LOAN_TYPES } from "./schema";
  * doesn't contain. Numeric fields are allowed null when not detectable.
  */
 export const extractedLoanDataSchema = z.object({
-  loanType: z.enum(LOAN_TYPES).nullish().describe("home / personal / auto loan, inferred from product name"),
+  loanType: z.enum(LOAN_TYPES).nullish().describe("Loan type inferred from product name: home, personal, auto, loan_against_property, education, gold, or business"),
   lender: z.enum(LENDERS).nullish().describe("Which bank issued the loan. Use 'Other' if not HDFC/SBI/ICICI"),
   principalOutstanding: z.number().nullish().describe("Current principal outstanding in ₹ (not original sanction amount)"),
   currentRate: z.number().nullish().describe("Current rate of interest in percent, e.g. 9.25"),

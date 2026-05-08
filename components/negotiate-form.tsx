@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { DEMO_PROFILES } from "@/lib/demo";
 import type { ExtractedLoanData } from "@/lib/extract-schema";
 import {
   EMPLOYER_CATEGORIES,
   LENDERS,
+  LOAN_TYPE_LABELS,
   LOAN_TYPES,
   loanProfileSchema,
   type LoanProfile,
@@ -40,19 +42,37 @@ const EXTRACTABLE_FIELDS: Array<keyof LoanProfile> = [
 ];
 
 const DEFAULT: Partial<LoanProfile> = {
-  loanType: "home",
-  lender: "HDFC",
-  principalOutstanding: 4500000,
-  currentRate: 9.25,
-  tenureRemainingMonths: 180,
-  currentEMI: 41200,
-  sanctionDate: "2022-08",
-  cibilScore: 790,
-  emisPaidOnTime: 32,
-  prepaymentsTotal: 200000,
-  monthlyIncome: 175000,
-  employerCategory: "MNC / Listed Co.",
+  loanType: "personal",
+  lender: "Other",
+  principalOutstanding: 900000,
+  currentRate: 14.5,
+  tenureRemainingMonths: 48,
+  currentEMI: 24800,
+  sanctionDate: "2024-04",
+  cibilScore: 735,
+  emisPaidOnTime: 14,
+  prepaymentsTotal: 50000,
+  monthlyIncome: 125000,
+  employerCategory: "Private (unlisted)",
 };
+
+const PROFILE_FIELDS: Array<Path<LoanProfile>> = [
+  "loanType",
+  "lender",
+  "principalOutstanding",
+  "currentRate",
+  "tenureRemainingMonths",
+  "currentEMI",
+  "sanctionDate",
+  "cibilScore",
+  "emisPaidOnTime",
+  "prepaymentsTotal",
+  "monthlyIncome",
+  "employerCategory",
+  "competingOffer.lender",
+  "competingOffer.rate",
+  "additionalContext",
+];
 
 export function NegotiateForm({ onSubmit, initialProfile }: Props) {
   const form = useForm<LoanProfile>({
@@ -66,11 +86,13 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
   }, []);
 
   const [autofilled, setAutofilled] = useState<Set<keyof LoanProfile>>(new Set());
+  const [loadedDemo, setLoadedDemo] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     setValue,
+    reset,
     formState: { errors, isSubmitting },
   } = form;
 
@@ -87,6 +109,32 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
       filled.add(key);
     }
     setAutofilled(filled);
+    setLoadedDemo(null);
+  }
+
+  function applyDemoProfile(label: string, profile: LoanProfile) {
+    reset(profile);
+    for (const field of PROFILE_FIELDS) {
+      const value = field.split(".").reduce<unknown>((acc, part) => {
+        if (acc && typeof acc === "object" && part in acc) {
+          return (acc as Record<string, unknown>)[part];
+        }
+        return undefined;
+      }, profile);
+
+      const nextValue =
+        value === undefined && (field === "competingOffer.lender" || field === "additionalContext")
+          ? ""
+          : value;
+
+      setValue(field, nextValue as never, {
+        shouldDirty: true,
+        shouldTouch: true,
+        shouldValidate: true,
+      });
+    }
+    setAutofilled(new Set());
+    setLoadedDemo(label);
   }
 
   const af = (k: keyof LoanProfile) => autofilled.has(k);
@@ -109,6 +157,38 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
             </p>
           )}
         </div>
+        <div className="rounded-lg border border-dashed bg-secondary/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold tracking-tight">Demo profiles</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Use these when API quota is tight or you need a reliable walkthrough.
+              </p>
+              {loadedDemo && (
+                <p className="mt-2 inline-flex rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                  Loaded: {loadedDemo}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {DEMO_PROFILES.map((sample) => (
+              <button
+                key={sample.id}
+                type="button"
+                onClick={() => {
+                  applyDemoProfile(sample.label, sample.profile);
+                }}
+                className="rounded-md border bg-background px-3 py-2 text-left text-sm transition-colors hover:border-primary/50 hover:bg-primary/5"
+              >
+                <span className="block font-medium">{sample.label}</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  {sample.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
         <UploadStatement onExtracted={handleExtracted} />
       </header>
 
@@ -120,7 +200,7 @@ export function NegotiateForm({ onSubmit, initialProfile }: Props) {
           >
             {LOAN_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {LOAN_TYPE_LABELS[t]}
               </option>
             ))}
           </select>

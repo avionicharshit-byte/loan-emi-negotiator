@@ -7,6 +7,8 @@ Most borrowers know they are probably paying too much, but the hard part is turn
 ## What It Does
 
 - Collects a home, personal, or auto loan profile with sensible defaults for quick demos.
+- Supports home, personal, auto, loan against property, education, gold, and business loan scenarios.
+- Includes demo profiles and a deterministic fallback so quota issues do not break a walkthrough.
 - Optionally extracts loan details from a PDF or image statement using Gemini.
 - Streams a structured negotiation plan from `/api/negotiate`.
 - Produces a target rate range, savings estimate, ranked arguments with source URLs, a concise email draft, a phone script, objection handling, assumptions, and confidence.
@@ -78,6 +80,9 @@ Update `.env.local`:
 GEMINI_API_KEY=your_real_key_here
 # Optional
 GEMINI_MODEL=gemini-2.5-flash-lite
+
+# Optional: use this before demos if you do not want to depend on API quota
+DEMO_MODE=true
 ```
 
 Start the app:
@@ -87,6 +92,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000`, then click `Try the agent` or go directly to `http://localhost:3000/negotiate`.
+
+For a reliable live demo, set `DEMO_MODE=true` in `.env.local`, restart the dev server, and click one of the demo profiles at the top of the form. The visible loan basics should change immediately when a profile is selected.
 
 Useful checks:
 
@@ -112,7 +119,7 @@ npm run build
 - Statement extraction depends on the quality and format of uploaded PDFs or images.
 - There is no user account system, persistence layer, or encrypted document storage.
 - There is no automated evaluation suite for hallucination, source quality, or negotiation-plan usefulness yet.
-- The app currently supports a small set of Indian lender patterns and loan types.
+- The app supports common Indian loan categories, but some non-home-loan pricing uses indicative benchmarks rather than fully scraped lender-specific rate cards.
 
 ## Repository Hygiene
 

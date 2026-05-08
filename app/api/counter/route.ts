@@ -1,7 +1,14 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { streamObject } from "ai";
+import { generateObject } from "ai";
 
 import { buildSystemPrompt } from "@/lib/domain";
+import {
+  allowsDemoFallback,
+  buildDemoCounterPlan,
+  createObjectTextStreamResponse,
+  isDemoMode,
+  isQuotaLikeError,
+} from "@/lib/demo";
 import { counterPlanSchema, rmReplyRequestSchema } from "@/lib/schema";
 
 export const runtime = "nodejs";
@@ -14,13 +21,6 @@ const google = createGoogleGenerativeAI({
 });
 
 export async function POST(req: Request) {
-  if (!process.env.GEMINI_API_KEY) {
-    return new Response(
-      JSON.stringify({ error: "missing_api_key", message: "GEMINI_API_KEY is not set." }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
   const json = await req.json();
   const parsed = rmReplyRequestSchema.safeParse(json);
   if (!parsed.success) {
@@ -31,6 +31,27 @@ export async function POST(req: Request) {
   }
 
   const { profile, originalTargetLow, originalTargetHigh, rmReplyText } = parsed.data;
+
+  if (isDemoMode()) {
+    return createObjectTextStreamResponse(
+      buildDemoCounterPlan({ profile, originalTargetLow, originalTargetHigh, rmReplyText }),
+      { headers: { "X-Demo-Reason": "demo_mode" } },
+    );
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    if (allowsDemoFallback()) {
+      return createObjectTextStreamResponse(
+        buildDemoCounterPlan({ profile, originalTargetLow, originalTargetHigh, rmReplyText }),
+        { headers: { "X-Demo-Reason": "missing_api_key" } },
+      );
+    }
+
+    return new Response(
+      JSON.stringify({ error: "missing_api_key", message: "GEMINI_API_KEY is not set." }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   const userMessage = `The borrower previously asked for a rate reset based on this profile:
 
@@ -56,13 +77,40 @@ Output a counter-plan per the schema:
 
 Be specific to the borrower's profile and what the RM said. Never generic.`;
 
-  const result = streamObject({
-    model: google(MODEL),
-    schema: counterPlanSchema,
-    system: buildSystemPrompt(),
-    prompt: userMessage,
-    temperature: 0.4,
-  });
+  try {
+    const { object } = await generateObject({
+      model: google(MODEL),
+      schema: counterPlanSchema,
+      system: buildSystemPrompt(),
+      prompt: userMessage,
+      temperature: 0.4,
+    });
 
-  return result.toTextStreamResponse();
+    return createObjectTextStreamResponse(object, {
+      headers: { "X-Model": MODEL },
+    });
+  } catch (err: unknown) {
+    if (allowsDemoFallback()) {
+      return createObjectTextStreamResponse(
+        buildDemoCounterPlan({ profile, originalTargetLow, originalTargetHigh, rmReplyText }),
+        {
+          headers: {
+            "X-Demo-Reason": isQuotaLikeError(err) ? "quota_fallback" : "provider_fallback",
+          },
+        },
+      );
+    }
+
+    const message = err instanceof Error ? err.message : String(err);
+    return new Response(
+      JSON.stringify({
+        error: isQuotaLikeError(err) ? "rate_limited" : "counter_failed",
+        message,
+      }),
+      {
+        status: isQuotaLikeError(err) ? 429 : 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
 }

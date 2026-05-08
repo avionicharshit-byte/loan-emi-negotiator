@@ -7,6 +7,37 @@ export const RATE_ENVIRONMENT = {
   source: "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx",
 };
 
+export const ADDITIONAL_LOAN_RATE_BENCHMARKS = {
+  loan_against_property: {
+    label: "loan against property",
+    floor: 9.0,
+    ceiling: 12.5,
+    note:
+      "Secured by property, but generally priced above home loans because end-use and collateral risk differ.",
+  },
+  education: {
+    label: "education loan",
+    floor: 8.8,
+    ceiling: 14.0,
+    note:
+      "Pricing depends heavily on institute tier, collateral, co-borrower income, and moratorium terms.",
+  },
+  gold: {
+    label: "gold loan",
+    floor: 8.75,
+    ceiling: 18.0,
+    note:
+      "Short-tenure secured loan where LTV, gold purity, and renewal charges often matter as much as headline rate.",
+  },
+  business: {
+    label: "business loan",
+    floor: 11.0,
+    ceiling: 24.0,
+    note:
+      "Unsecured or partly secured SME pricing depends on turnover, banking vintage, GST returns, collateral, and bureau history.",
+  },
+} as const;
+
 export const LENDER_RATE_CARDS = {
   HDFC: {
     name: "HDFC Bank",
@@ -37,6 +68,46 @@ export const LENDER_RATE_CARDS = {
       "ICICI is more aggressive on retention — likely to match competitor offers if you produce a sanction letter. Their 'iMobile' app has an 'interest rate review' tile. Conversion fee 0.50% + GST but commonly waived for CIBIL 780+ customers with 12+ months of clean repayment.",
     rateCardUrl: "https://www.icicibank.com/personal-banking/loans/home-loan/home-loan-interest-rates",
     escalationPath: "Branch RM → Customer Service → headservicequality@icicibank.com",
+  },
+  Axis: {
+    name: "Axis Bank",
+    homeLoan: { eblrFloor: 8.75, eblrCeiling: 9.65, premiumTierCutoff: 780 },
+    personalLoan: { floor: 10.99, ceiling: 22.0 },
+    autoLoan: { floor: 8.85, ceiling: 12.0 },
+    notes:
+      "Axis tends to price competitively for salaried premium-bank customers and may consider relationship value such as salary account, cards, and investment balances. Existing borrowers should ask for a rate conversion review rather than a generic service request.",
+    rateCardUrl: "https://www.axisbank.com/retail/loans/home-loan/interest-rates-charges",
+    escalationPath: "Branch RM → Nodal Officer → principal.nodal@axisbank.com",
+  },
+  Kotak: {
+    name: "Kotak Mahindra Bank",
+    homeLoan: { eblrFloor: 8.7, eblrCeiling: 9.5, premiumTierCutoff: 780 },
+    personalLoan: { floor: 10.99, ceiling: 24.0 },
+    autoLoan: { floor: 8.9, ceiling: 11.9 },
+    notes:
+      "Kotak is responsive to clean repayment, salaried income stability, and documented competitor pricing. Borrowers should ask for a retention-rate review with fee waiver or reduced conversion charges.",
+    rateCardUrl: "https://www.kotak.com/en/personal-banking/loans/home-loan/home-loan-interest-rates.html",
+    escalationPath: "Branch RM → Service Manager → nodalofficer@kotak.com",
+  },
+  "Bank of Baroda": {
+    name: "Bank of Baroda",
+    homeLoan: { eblrFloor: 8.4, eblrCeiling: 9.55, premiumTierCutoff: 750 },
+    personalLoan: { floor: 11.15, ceiling: 18.0 },
+    autoLoan: { floor: 8.75, ceiling: 11.25 },
+    notes:
+      "Public-sector banks often have sharper home-loan slabs for high-CIBIL salaried borrowers. Strong repayment history and government/PSU employment can be meaningful negotiation signals.",
+    rateCardUrl: "https://www.bankofbaroda.in/interest-rate-and-service-charges/loans-interest-rates",
+    escalationPath: "Branch → Regional Office → nodal officer / grievance portal",
+  },
+  PNB: {
+    name: "Punjab National Bank",
+    homeLoan: { eblrFloor: 8.45, eblrCeiling: 9.6, premiumTierCutoff: 750 },
+    personalLoan: { floor: 11.25, ceiling: 18.5 },
+    autoLoan: { floor: 8.8, ceiling: 11.4 },
+    notes:
+      "PNB's pricing can be attractive for government, PSU, and strong salaried profiles. A borrower should ask the branch to map them to the correct CIBIL and employer-category slab.",
+    rateCardUrl: "https://www.pnbindia.in/interest-rates.html",
+    escalationPath: "Branch → Circle Office → PNB grievance redressal",
   },
   Other: {
     name: "Other lender",
@@ -118,9 +189,13 @@ export function buildSystemPrompt(): string {
   const lenderSummary = (Object.values(LENDER_RATE_CARDS) as Array<typeof LENDER_RATE_CARDS[keyof typeof LENDER_RATE_CARDS]>)
     .map(
       (l) =>
-        `${l.name}: home-loan EBLR ${l.homeLoan.eblrFloor}–${l.homeLoan.eblrCeiling}%, personal-loan ${l.personalLoan.floor}–${l.personalLoan.ceiling}%, auto-loan ${l.autoLoan.floor}–${l.autoLoan.ceiling}%. Rate card: ${l.rateCardUrl}. Escalation: ${l.escalationPath}. Notes: ${l.notes}`,
+        `${l.name}: home-loan EBLR ${l.homeLoan.eblrFloor}–${l.homeLoan.eblrCeiling}%, personal-loan ${l.personalLoan.floor}–${l.personalLoan.ceiling}%, auto-loan ${l.autoLoan.floor}–${l.autoLoan.ceiling}%. For loan against property, education, gold, and business loans, use the additional product benchmarks below unless the lender note gives stronger product-specific evidence. Rate card: ${l.rateCardUrl}. Escalation: ${l.escalationPath}. Notes: ${l.notes}`,
     )
     .join("\n\n");
+
+  const additionalProductSummary = Object.values(ADDITIONAL_LOAN_RATE_BENCHMARKS)
+    .map((p) => `${p.label}: indicative ${p.floor}–${p.ceiling}%. ${p.note}`)
+    .join("\n");
 
   const cibilSummary = CIBIL_BANDS.map(
     (b) =>
@@ -138,6 +213,9 @@ ${lenderSummary}
 
 CIBIL BANDS:
 ${cibilSummary}
+
+ADDITIONAL PRODUCT BENCHMARKS:
+${additionalProductSummary}
 
 NEGOTIATION PRINCIPLES:
 High-leverage signals to look for in the borrower's profile:
